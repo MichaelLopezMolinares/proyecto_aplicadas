@@ -167,7 +167,6 @@ def ejecutar_arbol_decision(df):
 
 
 def ejecutar_kmedias(df):
-    """K-Medias - logica basada en KMediasV1 usando sklearn."""
     df = df.replace("?", np.nan)
 
     # convertir a numerico lo que se pueda
@@ -331,13 +330,26 @@ def ejecutar_kmedias(df):
     })
 
 def ejecutar_kmodos(df):
-    """K-Modas - alineado con la lógica de KModas base."""
+    """K-Modas - alineado con la l?gica de KModas base con detecci?n num?rica robusta."""
     df_work = df.replace("?", np.nan).copy()
 
-    # columnas categóricas (no numéricas)
+    # limpiar strings y detectar columnas num?ricas a partir de la proporci?n de valores num?ricos
+    num_threshold = 0.8
+    for col in df_work.columns:
+        if df_work[col].dtype == object:
+            serie = df_work[col].apply(lambda v: v.strip() if isinstance(v, str) else v)
+            serie = serie.replace({"": np.nan})
+            coerced = pd.to_numeric(serie, errors="coerce")
+            non_null = serie.notna()
+            if non_null.any() and (coerced.notna().sum() / non_null.sum()) >= num_threshold:
+                df_work[col] = coerced
+            else:
+                df_work[col] = serie
+
+    # columnas categoricas (no num?ricas)
     cat_cols = df_work.select_dtypes(exclude=[np.number]).columns.tolist()
     if not cat_cols:
-        return jsonify({"error": "No hay columnas categóricas para K-Modas"}), 400
+        return jsonify({"error": "No hay columnas categ?ricas para K-Modas"}), 400
 
     # columna base
     completas = [c for c in cat_cols if not df_work[c].isna().any()]
@@ -350,9 +362,9 @@ def ejecutar_kmodos(df):
 
     feat_cols = [c for c in cat_cols if c != base_col]
     if not feat_cols:
-        return jsonify({"error": "No hay columnas categóricas distintas de la base para K-Modas"}), 400
+        return jsonify({"error": "No hay columnas categ?ricas distintas de la base para K-Modas"}), 400
 
-    # codificación categórica para KModes
+    # codificaci?n categ?rica para KModes
     df_feat = df_work[feat_cols].fillna("MISSING").astype(str)
     cat_missing_mask = df_work[feat_cols].isna().to_numpy()
     X_encoded = df_feat.apply(lambda col: pd.Categorical(col).codes).to_numpy(dtype=np.uint16)
@@ -366,7 +378,7 @@ def ejecutar_kmodos(df):
     k_min = 1
     k_max = min(K_MAX_ELBOW, len(X_train))
     if k_min > k_max:
-        return jsonify({"error": f"Rango K inválido: [{k_min}, {k_max}]"}), 400
+        return jsonify({"error": f"Rango K inv?lido: [{k_min}, {k_max}]"}), 400
 
     costs = []
     for k in range(k_min, k_max + 1):
@@ -393,22 +405,21 @@ def ejecutar_kmodos(df):
     labels_train = modelo.fit_predict(X_train)
 
     labels_all = np.full(len(df_work), -1, dtype=int)
-    train_idx = np.where(mask_train)[0]
-    labels_all[train_idx] = labels_train
+    labels_all[mask_train] = labels_train
 
-    # asignar clusters a filas incompletas por distancia simbólica
+    # asignar clusters a filas incompletas por distancia simb?lica
     centroids = modelo.cluster_centroids_
     for idx in np.where(~mask_train)[0]:
         row = X_encoded[idx]
         dists = np.sum(row != centroids, axis=1)
         labels_all[idx] = int(np.argmin(dists))
 
-    # mapeo cluster <-> valor base usando filas completas
-    base_series = df_work[base_col]
+    # mapeo cluster <-> valor base usando s?lo filas completas de entrenamiento
+    base_series_train = df_work.loc[mask_train, base_col]
     cluster_to_base = {}
     base_to_cluster = {}
     for cid in range(best_k):
-        valores = base_series[(labels_all == cid) & base_series.notna()]
+        valores = base_series_train[labels_train == cid].dropna()
         if valores.empty:
             continue
         modo = valores.mode().iloc[0]
@@ -416,17 +427,13 @@ def ejecutar_kmodos(df):
         if modo not in base_to_cluster:
             base_to_cluster[modo] = cid
 
-    # usar valor base conocido para re-asignar
-    for idx in range(len(df_work)):
-        val = base_series.iloc[idx]
+    # usar valor base conocido para re-asignar (solo filas incompletas)
+    for idx in np.where(~mask_train)[0]:
+        val = df_work.at[idx, base_col]
         if pd.notna(val) and val in base_to_cluster:
             labels_all[idx] = base_to_cluster[val]
-        elif pd.isna(val):
-            mapped = cluster_to_base.get(labels_all[idx])
-            if mapped is not None:
-                df_work.at[idx, base_col] = mapped
 
-    # imputar otras categóricas por moda del cluster
+    # imputar otras categ?ricas por moda del cluster
     df_result = df_work.copy()
     for col_idx, col in enumerate(feat_cols):
         col_series = df_work[col]
@@ -440,7 +447,13 @@ def ejecutar_kmodos(df):
             if cat_missing_mask[row_idx, col_idx] and cid in modas:
                 df_result.at[row_idx, col] = modas[cid]
 
-    df_result[base_col] = df_work[base_col]
+    # imputar base faltante con modo del cluster resultante
+    for idx in range(len(df_result)):
+        if pd.isna(df_result.at[idx, base_col]):
+            mapped = cluster_to_base.get(labels_all[idx])
+            if mapped is not None:
+                df_result.at[idx, base_col] = mapped
+
     df_result["Cluster"] = labels_all + 1  # 1-based para consistencia
 
     df_preview = df_result.head(50).copy()
