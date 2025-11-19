@@ -1,0 +1,11 @@
+Producto,Precio,Stock,Ventas,Categoria
+A,100,50,120,Electronica
+B,250,30,85,Electronica
+C,75,100,200,Hogar
+D,500,15,45,Electronica
+E,150,60,95,Hogar
+F,80,90,180,Hogar
+G,300,25,70,Electronica
+H,120,70,110,Hogar
+I,200,40,90,Electronica
+J,90,85,150,Hogar

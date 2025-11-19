@@ -1,0 +1,17 @@
+Edad,Ingresos,Estudiante,Credito,Compra
+Joven,Alto,No,Excelente,No
+Joven,Alto,No,Excelente,No
+MediaEdad,Alto,No,Excelente,Si
+Senior,Medio,No,Excelente,Si
+Senior,Bajo,Si,Regular,Si
+Senior,Bajo,Si,Bueno,No
+MediaEdad,Bajo,Si,Bueno,Si
+Joven,Medio,No,Regular,No
+Joven,Bajo,Si,Excelente,Si
+Senior,Medio,Si,Excelente,Si
+Joven,Medio,Si,Bueno,Si
+MediaEdad,Medio,No,Bueno,Si
+MediaEdad,Alto,Si,Excelente,Si
+Senior,Medio,No,Regular,?
+Joven,Alto,Si,Regular,?
+MediaEdad,Bajo,No,Bueno,?
