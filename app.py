@@ -52,7 +52,7 @@ def upload():
 
         # Leer CSV
         try:
-            df = pd.read_csv(file)
+            df = pd.read_csv(file, sep=None, engine="python")
         except Exception as e:
             return jsonify({"error": f"Error al leer CSV: {str(e)}"}), 400
 
@@ -168,40 +168,96 @@ def ejecutar_arbol_decision(df):
 
 def ejecutar_kmedias(df):
     """K-Medias - Clustering de datos numéricos"""
+    df_original = df.copy()
+    df = df.replace("?", np.nan)
+    # convertir a numérico solo las columnas con datos numéricos válidos
+    for col in df.columns:
+        if df[col].dtype == object:
+            converted = pd.to_numeric(df[col], errors='coerce')
+            if converted.notna().any():
+                df[col] = converted
     # Seleccionar solo columnas numéricas
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    cat_cols = df.select_dtypes(exclude=[np.number]).columns.tolist()
+    reference_col = None
+    reference_categories = None
+    for col in cat_cols:
+        unique_vals = pd.Series(df_original[col]).dropna().unique()
+        if len(unique_vals) > 1 and len(unique_vals) <= K_MAX_ELBOW:
+            reference_col = col
+            reference_categories = unique_vals
+            break
+        
+    X_all = df[numeric_cols].copy()
+    X_all = X_all.dropna(axis=1, how='all')
     
-    if not numeric_cols:
-        return jsonify({"error": "No hay columnas numéricas para K-Medias"}), 400
+    numeric_cols = X_all.columns.tolist()
+    missing_mask = X_all.isna()
+    row_missing = missing_mask.any(axis=1)
     
-    X = df[numeric_cols].copy()
-    X = X.fillna(X.median())
+    X_filled = X_all.fillna(X_all.median())
+    df[numeric_cols] = X_filled
     
-    # Determinar mejor K usando método del codo
-    k_min = max(2, min(K_MIN_ELBOW, len(X)))
-    k_max = max(k_min, min(K_MAX_ELBOW, len(X)))
+    X_train = X_filled[~row_missing].copy()
+    if X_train.empty:
+        return jsonify({"error": "No hay filas completas para entrenar K-Medias"}), 400
+   
+    # Determinar mejor K usando método del codo con filas completas
+    if reference_col:
+        target_k = min(len(reference_categories), len(X_train))
+        k_min = k_max = max(2, target_k)
+    else:
+        k_min = max(1, min(K_MIN_ELBOW, len(X_train)))
+        k_max = max(k_min, min(K_MAX_ELBOW, len(X_train)))
     
     inertias = []
     for k in range(k_min, k_max + 1):
         kmeans = KMeans(n_clusters=k, random_state=RANDOM_STATE, n_init=N_INIT)
-        kmeans.fit(X)
+        kmeans.fit(X_train)
         inertias.append((k, kmeans.inertia_))
     
     # Método del codo simplificado
     best_k = elegir_k_por_codo(inertias)
     
-    # Entrenar con mejor K
+    # Entrenar con mejor K usando filas completas
     kmeans_final = KMeans(n_clusters=best_k, random_state=RANDOM_STATE, n_init=N_INIT)
-    labels = kmeans_final.fit_predict(X)
+    kmeans_final.fit(X_train)
+    labels_train = kmeans_final.labels_
+    cluster_centers_df = pd.DataFrame(kmeans_final.cluster_centers_, columns=numeric_cols)
+    
+    label_series = pd.Series(index=df.index, dtype=int)
+    label_series.loc[X_train.index] = labels_train
+    
+    if row_missing.any():
+        predictions = kmeans_final.predict(X_filled.loc[row_missing])
+        label_series.loc[row_missing[row_missing].index] = predictions
+    
+    category_cluster_map = {}
+    if cat_cols:
+        for col in cat_cols:
+            value_map = {}
+            col_values = df_original[col]
+            for cluster_idx in range(best_k):
+                cluster_rows = X_train.index[labels_train == cluster_idx]
+                if len(cluster_rows) == 0:
+                    continue
+                values = col_values.loc[cluster_rows].dropna()
+                if values.empty:
+                    continue
+                majority_val = values.mode().iloc[0]
+                value_map[majority_val] = cluster_idx
+            if value_map:
+                category_cluster_map[col] = value_map
     
     # Generar visualización
     cluster_plot_uri = None
-    if X.shape[1] >= 2:
+    if X_filled.shape[1] >= 2:
         fig, ax = plt.subplots(figsize=(10, 6))
-        scatter = ax.scatter(X.iloc[:, 0], X.iloc[:, 1], c=labels, cmap='viridis', s=50, alpha=0.6)
-        ax.scatter(kmeans_final.cluster_centers_[:, 0], 
-                  kmeans_final.cluster_centers_[:, 1], 
-                  marker='X', s=200, c='red', edgecolors='black', label='Centroides')
+        scatter = ax.scatter(X_filled.iloc[:, 0], X_filled.iloc[:, 1],
+                             c=label_series.values, cmap='viridis', s=50, alpha=0.6)
+        ax.scatter(kmeans_final.cluster_centers_[:, 0],
+                   kmeans_final.cluster_centers_[:, 1],
+                   marker='X', s=200, c='red', edgecolors='black', label='Centroides')
         ax.set_xlabel(numeric_cols[0])
         ax.set_ylabel(numeric_cols[1])
         ax.set_title(f'K-Medias Clustering (K={best_k})')
@@ -219,9 +275,36 @@ def ejecutar_kmedias(df):
     
     # Agregar columna de clusters al DataFrame
     df_result = df.copy()
-    df_result['Cluster'] = labels
+    cat_priority = cat_cols
+    if reference_col:
+        cat_priority = [reference_col] + [c for c in cat_cols if c != reference_col]
     
-    preview = df_result.head(50).to_dict(orient="records")
+    if missing_mask.values.any():
+        for idx in row_missing[row_missing].index:
+            assigned_cluster = label_series.at[idx]
+            if category_cluster_map:
+                for col in cat_priority:
+                    mapping = category_cluster_map.get(col)
+                    if not mapping:
+                        continue
+                    value = df_original.at[idx, col]
+                    if pd.isna(value):
+                        continue
+                    cluster_candidate = mapping.get(value)
+                    if cluster_candidate is not None:
+                        assigned_cluster = cluster_candidate
+                        break
+            missing_cols = missing_mask.loc[idx]
+            for col in missing_cols[missing_cols].index:
+                df_result.at[idx, col] = cluster_centers_df.at[assigned_cluster, col]
+            label_series.at[idx] = assigned_cluster
+    
+    df_result['Cluster'] = label_series.values
+    
+    df_preview = df_result.head(50).copy()
+    df_preview = df_preview.replace({np.nan: "?"})
+    preview = df_preview.to_dict(orient="records")
+    
     
     return jsonify({
         "message": f"K-Medias completado (K={best_k})",
@@ -231,7 +314,6 @@ def ejecutar_kmedias(df):
         "tree_image_datauri": cluster_plot_uri,
         "predictions": []
     })
-
 
 def ejecutar_kmodos(df):
     """K-Modas - Clustering de datos categóricos"""
@@ -243,7 +325,6 @@ def ejecutar_kmodos(df):
     
     # Seleccionar columnas categóricas
     X = df[cat_cols].copy()
-    X = X.fillna('MISSING').astype(str)
     
     # Codificar categorías
     X_encoded = X.apply(lambda col: pd.Categorical(col).codes).to_numpy(dtype=np.uint16)
