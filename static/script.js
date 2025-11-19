@@ -16,7 +16,6 @@ const previewContainer = document.getElementById('preview-container');
 // Paneles de opciones
 const optionsNormalizacion = document.getElementById('options-normalizacion');
 const optionsDiscretizacion = document.getElementById('options-discretizacion');
-const optionsRelleno = document.getElementById('options-relleno');
 
 // Habilitar botón cuando se seleccione archivo y algoritmo
 fileInput.addEventListener('change', checkInputs);
@@ -37,7 +36,6 @@ function showOptionsPanel() {
     // Ocultar todos los paneles
     optionsNormalizacion.classList.remove('active');
     optionsDiscretizacion.classList.remove('active');
-    optionsRelleno.classList.remove('active');
 
     // Mostrar panel correspondiente
     const algorithm = algorithmSelect.value;
@@ -45,8 +43,6 @@ function showOptionsPanel() {
         optionsNormalizacion.classList.add('active');
     } else if (algorithm === 'discretizacion') {
         optionsDiscretizacion.classList.add('active');
-    } else if (algorithm === 'relleno') {
-        optionsRelleno.classList.add('active');
     }
 }
 
@@ -74,9 +70,7 @@ processBtn.addEventListener('click', async function() {
             formData.append('columna_clase', columnaClase);
         }
         formData.append('max_intervals', document.getElementById('max-intervals').value);
-    } else if (algorithm === 'relleno') {
-        formData.append('estrategia', document.getElementById('estrategia-relleno').value);
-    }
+    } 
 
     // Mostrar estado de carga
     showStatus('loading', 'Procesando datos... Por favor espera');
@@ -136,10 +130,7 @@ function displayResults(data, algorithm) {
     } else if (data.target_column) {
         infoBox.style.display = 'block';
         infoText.textContent = `Columna objetivo: ${data.target_column}`;
-    } else if (data.estrategia) {
-        infoBox.style.display = 'block';
-        infoText.textContent = `Estrategia de relleno: ${data.estrategia}`;
-    }
+    } 
 
     // Mostrar visualización si existe
     if (data.tree_image_datauri) {
