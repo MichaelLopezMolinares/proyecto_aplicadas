@@ -2,9 +2,7 @@
 Algoritmos de normalización de datos
 Incluye: Min-Max, Z-Score y Logarítmica
 """
-
 import math
-
 
 def min_max_normalization(columna, min_val=None, max_val=None, index=0):
     """Escalamiento lineal Min-Max: todos los valores se ajustan entre 0 y 1"""

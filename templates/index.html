@@ -3,296 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <title>Sistema de Minería de Datos</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            overflow: hidden;
-        }
-
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 30px;
-            text-align: center;
-        }
-
-        .header h1 {
-            font-size: 2.5em;
-            margin-bottom: 10px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
-        }
-
-        .header p {
-            font-size: 1.1em;
-            opacity: 0.9;
-        }
-
-        .content {
-            padding: 40px;
-        }
-
-        .upload-section {
-            background: #f8f9fa;
-            border: 3px dashed #667eea;
-            border-radius: 15px;
-            padding: 40px;
-            text-align: center;
-            margin-bottom: 30px;
-            transition: all 0.3s ease;
-        }
-
-        .upload-section:hover {
-            border-color: #764ba2;
-            background: #f0f0f5;
-        }
-
-        .upload-icon {
-            font-size: 4em;
-            color: #667eea;
-            margin-bottom: 20px;
-        }
-
-        .file-input-wrapper {
-            position: relative;
-            display: inline-block;
-            margin: 20px 0;
-        }
-
-        input[type="file"] {
-            font-size: 16px;
-            padding: 10px;
-        }
-
-        .algorithm-selector {
-            margin: 30px 0;
-        }
-
-        .algorithm-selector label {
-            display: block;
-            font-size: 1.2em;
-            font-weight: 600;
-            color: #333;
-            margin-bottom: 15px;
-        }
-
-        select {
-            width: 100%;
-            padding: 15px;
-            font-size: 16px;
-            border: 2px solid #e0e0e0;
-            border-radius: 10px;
-            background: white;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        select:focus {
-            outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-        }
-
-        .options-panel {
-            background: #f8f9fa;
-            border-radius: 10px;
-            padding: 20px;
-            margin: 20px 0;
-            display: none;
-        }
-
-        .options-panel.active {
-            display: block;
-        }
-
-        .option-group {
-            margin-bottom: 15px;
-        }
-
-        .option-group label {
-            display: block;
-            font-weight: 600;
-            margin-bottom: 8px;
-            color: #555;
-        }
-
-        .option-group input,
-        .option-group select {
-            width: 100%;
-            padding: 10px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            font-size: 14px;
-        }
-
-        button {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 15px 40px;
-            font-size: 18px;
-            font-weight: 600;
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-        }
-
-        button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
-        }
-
-        button:active {
-            transform: translateY(0);
-        }
-
-        button:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-            box-shadow: none;
-        }
-
-        .status {
-            margin: 20px 0;
-            padding: 15px;
-            border-radius: 10px;
-            text-align: center;
-            font-weight: 600;
-            display: none;
-        }
-
-        .status.show {
-            display: block;
-        }
-
-        .status.loading {
-            background: #fff3cd;
-            color: #856404;
-            border: 2px solid #ffc107;
-        }
-
-        .status.success {
-            background: #d4edda;
-            color: #155724;
-            border: 2px solid #28a745;
-        }
-
-        .status.error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 2px solid #dc3545;
-        }
-
-        .results-section {
-            margin-top: 30px;
-            display: none;
-        }
-
-        .results-section.show {
-            display: block;
-        }
-
-        .visualization {
-            text-align: center;
-            margin: 30px 0;
-        }
-
-        .visualization img {
-            max-width: 100%;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-        }
-
-        .data-table {
-            overflow-x: auto;
-            margin: 20px 0;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            background: white;
-            border-radius: 10px;
-            overflow: hidden;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-        }
-
-        th {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 15px;
-            text-align: left;
-            font-weight: 600;
-        }
-
-        td {
-            padding: 12px 15px;
-            border-bottom: 1px solid #e0e0e0;
-        }
-
-        tr:hover {
-            background: #f8f9fa;
-        }
-
-        .predictions-section,
-        .preview-section {
-            margin: 30px 0;
-        }
-
-        .section-title {
-            font-size: 1.5em;
-            font-weight: 700;
-            color: #333;
-            margin-bottom: 20px;
-            padding-bottom: 10px;
-            border-bottom: 3px solid #667eea;
-        }
-
-        .info-box {
-            background: #e7f3ff;
-            border-left: 4px solid #2196F3;
-            padding: 15px;
-            margin: 20px 0;
-            border-radius: 5px;
-        }
-
-        .info-box strong {
-            color: #1976D2;
-        }
-
-        @media (max-width: 768px) {
-            .content {
-                padding: 20px;
-            }
-
-            .header h1 {
-                font-size: 1.8em;
-            }
-
-            button {
-                width: 100%;
-            }
-        }
-    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/styles.css">
 </head>
+
 <body>
     <div class="container">
         <div class="header">
@@ -301,48 +17,44 @@
         </div>
 
         <div class="content">
+
             <div class="upload-section">
                 <div class="upload-icon">📊</div>
                 <h3>Selecciona tu archivo CSV</h3>
-                <p style="margin: 15px 0; color: #666;">
-                    El archivo debe tener encabezados en la primera fila
-                </p>
-                <div class="file-input-wrapper">
-                    <input type="file" id="file-input" accept=".csv">
-                </div>
+                <p style="color: #666;">El archivo debe tener encabezados en la primera fila</p>
+                <input type="file" id="file-input" accept=".csv">
             </div>
 
             <div class="algorithm-selector">
-                <label for="algorithm-select">Selecciona el algoritmo:</label>
+                <label>Selecciona el algoritmo:</label>
                 <select id="algorithm-select">
                     <option value="">-- Selecciona un algoritmo --</option>
                     <option value="arbol">🌳 Árbol de Decisión</option>
-                    <option value="kmedias">📍 K-Medias (Clustering Numérico)</option>
-                    <option value="kmodos">🔷 K-Modas (Clustering Categórico)</option>
-                    <option value="normalizacion">📏 Normalización de Datos</option>
+                    <option value="kmedias">📍 K-Medias (Numérico)</option>
+                    <option value="kmodos">🔷 K-Modas (Categórico)</option>
+                    <option value="normalizacion">📏 Normalización</option>
                     <option value="discretizacion">📊 Discretización (ChiMerge)</option>
                 </select>
             </div>
 
-            <!-- Opciones específicas por algoritmo -->
+            <!-- Opciones por algoritmo -->
             <div id="options-normalizacion" class="options-panel">
-                <h3 style="margin-bottom: 15px;">Opciones de Normalización</h3>
+                <h3>Opciones de Normalización</h3>
                 <div class="option-group">
-                    <label>Método de Normalización:</label>
+                    <label>Método:</label>
                     <select id="metodo-norm">
-                        <option value="min-max">Min-Max (0 a 1)</option>
-                        <option value="z-score">Z-Score (Estandarización)</option>
+                        <option value="min-max">Min-Max</option>
+                        <option value="z-score">Z-Score</option>
                         <option value="log">Logarítmica</option>
                     </select>
                 </div>
             </div>
 
             <div id="options-discretizacion" class="options-panel">
-                <h3 style="margin-bottom: 15px;">Opciones de Discretización</h3>
+                <h3>Opciones de Discretización</h3>
                 <div class="option-group">
                     <label>Columna de Clase:</label>
                     <input type="text" id="columna-clase" placeholder="Nombre de la columna objetivo">
-                    <small style="color: #666;">Dejar vacío para usar la última columna</small>
                 </div>
                 <div class="option-group">
                     <label>Máximo de Intervalos:</label>
@@ -350,7 +62,7 @@
                 </div>
             </div>
 
-            <div style="text-align: center; margin-top: 30px;">
+            <div style="text-align:center; margin-top:30px;">
                 <button id="process-btn" disabled>Procesar Datos</button>
             </div>
 
@@ -361,18 +73,18 @@
                     <strong>Información:</strong> <span id="info-text"></span>
                 </div>
 
-                <div id="visualization" class="visualization" style="display: none;">
+                <div id="visualization" class="visualization" style="display:none;">
                     <h3 class="section-title">Visualización</h3>
-                    <img id="result-img" alt="Resultado visual">
+                    <img id="result-img" alt="Resultado">
                 </div>
 
-                <div id="predictions-area" class="predictions-section" style="display: none;">
+                <div id="predictions-area" style="display:none;">
                     <h3 class="section-title">Predicciones</h3>
                     <div id="predictions-container" class="data-table"></div>
                 </div>
 
-                <div id="preview-area" class="preview-section" style="display: none;">
-                    <h3 class="section-title">Vista Previa de Resultados</h3>
+                <div id="preview-area" style="display:none;">
+                    <h3 class="section-title">Vista Previa</h3>
                     <div id="preview-container" class="data-table"></div>
                 </div>
             </div>

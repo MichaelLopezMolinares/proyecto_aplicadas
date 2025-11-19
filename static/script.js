@@ -17,6 +17,17 @@ const previewContainer = document.getElementById('preview-container');
 const optionsNormalizacion = document.getElementById('options-normalizacion');
 const optionsDiscretizacion = document.getElementById('options-discretizacion');
 
+// Efecto suave al cargar elementos
+function fadeIn(element) {
+    element.classList.add("fade-in");
+    element.style.display = "block";
+}
+
+function fadeOut(element) {
+    element.classList.remove("fade-in");
+    element.style.display = "none";
+}
+
 // Habilitar botón cuando se seleccione archivo y algoritmo
 fileInput.addEventListener('change', checkInputs);
 algorithmSelect.addEventListener('change', function() {
@@ -27,22 +38,24 @@ algorithmSelect.addEventListener('change', function() {
 function checkInputs() {
     if (fileInput.files.length > 0 && algorithmSelect.value !== '') {
         processBtn.disabled = false;
+        processBtn.classList.add("btn-enabled");
     } else {
         processBtn.disabled = true;
+        processBtn.classList.remove("btn-enabled");
     }
 }
 
 function showOptionsPanel() {
-    // Ocultar todos los paneles
     optionsNormalizacion.classList.remove('active');
     optionsDiscretizacion.classList.remove('active');
 
-    // Mostrar panel correspondiente
     const algorithm = algorithmSelect.value;
     if (algorithm === 'normalizacion') {
         optionsNormalizacion.classList.add('active');
+        fadeIn(optionsNormalizacion);
     } else if (algorithm === 'discretizacion') {
         optionsDiscretizacion.classList.add('active');
+        fadeIn(optionsDiscretizacion);
     }
 }
 
@@ -56,12 +69,10 @@ processBtn.addEventListener('click', async function() {
         return;
     }
 
-    // Preparar FormData
     const formData = new FormData();
     formData.append('file', file);
     formData.append('select', algorithm);
 
-    // Agregar opciones específicas según el algoritmo
     if (algorithm === 'normalizacion') {
         formData.append('metodo_norm', document.getElementById('metodo-norm').value);
     } else if (algorithm === 'discretizacion') {
@@ -70,9 +81,8 @@ processBtn.addEventListener('click', async function() {
             formData.append('columna_clase', columnaClase);
         }
         formData.append('max_intervals', document.getElementById('max-intervals').value);
-    } 
+    }
 
-    // Mostrar estado de carga
     showStatus('loading', 'Procesando datos... Por favor espera');
     processBtn.disabled = true;
     hideResults();
@@ -89,7 +99,6 @@ processBtn.addEventListener('click', async function() {
             throw new Error(data.error || 'Error en el servidor');
         }
 
-        // Mostrar resultados
         showStatus('success', data.message || '¡Proceso completado exitosamente!');
         displayResults(data, algorithm);
 
@@ -104,50 +113,55 @@ processBtn.addEventListener('click', async function() {
 function showStatus(type, message) {
     statusDiv.className = `status show ${type}`;
     statusDiv.textContent = message;
+
+    // Efecto vibración sutil en errores
+    if (type === "error") {
+        statusDiv.classList.add("shake");
+        setTimeout(() => statusDiv.classList.remove("shake"), 500);
+    }
 }
 
 function hideResults() {
-    resultsSection.classList.remove('show');
-    infoBox.style.display = 'none';
-    visualization.style.display = 'none';
-    predictionsArea.style.display = 'none';
-    previewArea.style.display = 'none';
+    fadeOut(infoBox);
+    fadeOut(visualization);
+    fadeOut(predictionsArea);
+    fadeOut(previewArea);
 }
 
 function displayResults(data, algorithm) {
     resultsSection.classList.add('show');
 
-    // Mostrar información adicional
     if (data.best_k !== undefined) {
         infoBox.style.display = 'block';
         infoText.textContent = `Mejor K seleccionado: ${data.best_k}`;
+        fadeIn(infoBox);
     } else if (data.metodo) {
         infoBox.style.display = 'block';
         infoText.textContent = `Método aplicado: ${data.metodo}`;
+        fadeIn(infoBox);
     } else if (data.columna_clase) {
         infoBox.style.display = 'block';
         infoText.textContent = `Columna de clase: ${data.columna_clase}, Intervalos: ${data.max_intervals}`;
+        fadeIn(infoBox);
     } else if (data.target_column) {
         infoBox.style.display = 'block';
         infoText.textContent = `Columna objetivo: ${data.target_column}`;
-    } 
+        fadeIn(infoBox);
+    }
 
-    // Mostrar visualización si existe
     if (data.tree_image_datauri) {
-        visualization.style.display = 'block';
         resultImg.src = data.tree_image_datauri;
+        fadeIn(visualization);
     }
 
-    // Mostrar predicciones
     if (data.predictions && data.predictions.length > 0) {
-        predictionsArea.style.display = 'block';
         buildPredictionsTable(data.predictions);
+        fadeIn(predictionsArea);
     }
 
-    // Mostrar vista previa
     if (data.preview && data.preview.length > 0) {
-        previewArea.style.display = 'block';
         buildPreviewTable(data.preview);
+        fadeIn(previewArea);
     }
 }
 
@@ -169,7 +183,7 @@ function buildPredictionsTable(predictions) {
     html += '</tr></thead><tbody>';
 
     predictions.forEach(pred => {
-        html += `<tr><td><strong>${pred.index}</strong></td>`;
+        html += `<tr class="fade-row"><td><strong>${pred.index}</strong></td>`;
         columns.forEach(col => {
             const value = pred.row[col] !== undefined ? pred.row[col] : '';
             html += `<td>${escapeHtml(String(value))}</td>`;
@@ -197,7 +211,7 @@ function buildPreviewTable(rows) {
     html += '</tr></thead><tbody>';
 
     rows.forEach(row => {
-        html += '<tr>';
+        html += '<tr class="fade-row">';
         columns.forEach(col => {
             const value = row[col] !== undefined ? row[col] : '';
             html += `<td>${escapeHtml(String(value))}</td>`;
