@@ -70,8 +70,6 @@ def upload():
             return ejecutar_normalizacion(df, request.form)
         elif algoritmo == 'discretizacion':
             return ejecutar_discretizacion(df, request.form)
-        elif algoritmo == 'relleno':
-            return ejecutar_relleno_valores(df, request.form)
         else:
             return jsonify({"error": "Algoritmo no reconocido"}), 400
 
@@ -317,73 +315,157 @@ def ejecutar_kmedias(df):
 
 def ejecutar_kmodos(df):
     """K-Modas - Clustering de datos categóricos"""
-    # Detectar columna base (categórica)
-    cat_cols = df.select_dtypes(exclude=[np.number]).columns.tolist()
+    df_work = df.replace("?", np.nan).copy()
+    initial_cat_cols = df_work.select_dtypes(exclude=[np.number]).columns.tolist()
+    cat_cols = []
+    for col in initial_cat_cols:
+        series_numeric = pd.to_numeric(df_work[col], errors="coerce")
+        if series_numeric.notna().any():
+            continue
+        cat_cols.append(col)
     
     if not cat_cols:
-        return jsonify({"error": "No hay columnas categóricas para K-Modas"}), 400
+        # intentar encontrar la primera columna no numérica en el CSV original (sin reemplazar) para usarla como base
+        raw_cat_cols = df.select_dtypes(exclude=[np.number]).columns.tolist()
+        if raw_cat_cols:
+            cat_cols = [raw_cat_cols[0]]
+            df_work[raw_cat_cols[0]] = df[raw_cat_cols[0]].copy()
+        else:
+            return jsonify({"error": "No hay columnas categóricas para K-Modas"}), 400
     
-    # Seleccionar columnas categóricas
-    X = df[cat_cols].copy()
+    # Determinar columna base
+    base_col = None
+    missing_counts = {col: df_work[col].isna().sum() for col in cat_cols}
+    cols_with_missing = [col for col, cnt in missing_counts.items() if cnt > 0]
+    if cols_with_missing:
+        base_col = max(cols_with_missing, key=lambda c: missing_counts[c])
+    elif "Clase" in cat_cols and df_work["Clase"].notna().any():
+        base_col = "Clase"
+    else:
+        base_col = df_work[cat_cols].notna().sum().idxmax()
     
-    # Codificar categorías
-    X_encoded = X.apply(lambda col: pd.Categorical(col).codes).to_numpy(dtype=np.uint16)
+    feat_cols = [col for col in cat_cols if col != base_col]
+    if not feat_cols:
+        feat_cols = []
     
-    # Determinar mejor K
-    k_min = max(2, min(K_MIN_ELBOW, len(X)))
-    k_max = max(k_min, min(K_MAX_ELBOW, len(X)))
+    encoded_blocks = []
+    cat_missing_mask = np.zeros((len(df_work), len(feat_cols)), dtype=bool) if feat_cols else np.zeros((len(df_work), 0), dtype=bool)
+    if feat_cols:
+        df_feat = df_work[feat_cols].copy()
+        cat_missing_mask = df_feat.isna().to_numpy()
+        df_feat = df_feat.fillna("MISSING").astype(str)
+        encoded_blocks.append(df_feat.apply(lambda col: pd.Categorical(col).codes).to_numpy(dtype=np.uint16))
+    
+    aux_cols = []
+    for col in df.columns:
+        if col == base_col or col in feat_cols:
+            continue
+        series_numeric = pd.to_numeric(df_work[col], errors="coerce")
+        if series_numeric.notna().sum() == 0:
+            continue
+        aux_cols.append(col)
+        aux_series = series_numeric.apply(lambda v: f"NUM_{v}" if pd.notna(v) else "MISSING")
+        encoded_blocks.append(pd.Categorical(aux_series).codes.astype(np.uint16).reshape(-1, 1))
+    
+    X_encoded = np.hstack(encoded_blocks) if encoded_blocks else None
+    if X_encoded is None:
+        return jsonify({"error": "No hay atributos válidos para K-Modas"}), 400
+    
+    mask_train = ~np.any(cat_missing_mask, axis=1) if feat_cols else np.ones(len(df_work), dtype=bool)
+    if not np.any(mask_train):
+        return jsonify({"error": "No hay filas completas para entrenar K-Modas"}), 400
+    
+    X_train = X_encoded[mask_train]
+    k_min = max(1, min(K_MIN_ELBOW, len(X_train)))
+    k_max = max(k_min, min(K_MAX_ELBOW, len(X_train)))
     
     costs = []
     for k in range(k_min, k_max + 1):
-        kmodes = KModes(n_clusters=k, init='Huang', n_init=N_INIT, 
-                       max_iter=MAX_ITER, random_state=RANDOM_STATE, verbose=0)
-        kmodes.fit(X_encoded)
-        costs.append((k, kmodes.cost_))
+        modelo = KModes(
+            n_clusters=k,
+            init="Huang",
+            n_init=N_INIT,
+            max_iter=MAX_ITER,
+            random_state=RANDOM_STATE,
+            verbose=0,
+        ).fit(X_train)
+        costs.append((k, modelo.cost_))
     
     best_k = elegir_k_por_codo(costs)
     
-    # Entrenar con mejor K
-    kmodes_final = KModes(n_clusters=best_k, init='Huang', n_init=N_INIT,
-                         max_iter=MAX_ITER, random_state=RANDOM_STATE, verbose=0)
-    labels = kmodes_final.fit_predict(X_encoded)
+    modelo = KModes(
+        n_clusters=best_k,
+        init="Huang",
+        n_init=N_INIT,
+        max_iter=MAX_ITER,
+        random_state=RANDOM_STATE,
+        verbose=0,
+    )
+    labels_train = modelo.fit_predict(X_train)
     
-    # Visualización simplificada
-    cluster_plot_uri = None
-    if X_encoded.shape[1] >= 2:
-        fig, ax = plt.subplots(figsize=(10, 6))
-        scatter = ax.scatter(X_encoded[:, 0], X_encoded[:, 1], c=labels, cmap='viridis', s=50, alpha=0.6)
-        ax.scatter(kmodes_final.cluster_centroids_[:, 0],
-                  kmodes_final.cluster_centroids_[:, 1],
-                  marker='X', s=200, c='red', edgecolors='black', label='Centroides')
-        ax.set_xlabel(cat_cols[0])
-        ax.set_ylabel(cat_cols[1] if len(cat_cols) > 1 else 'Componente 2')
-        ax.set_title(f'K-Modas Clustering (K={best_k})')
-        ax.legend()
-        ax.grid(True, alpha=0.3)
-        plt.colorbar(scatter, ax=ax, label='Cluster')
-        
-        img_buf = io.BytesIO()
-        plt.tight_layout()
-        plt.savefig(img_buf, format='png', dpi=120)
-        plt.close(fig)
-        img_buf.seek(0)
-        img_b64 = base64.b64encode(img_buf.read()).decode('ascii')
-        cluster_plot_uri = "data:image/png;base64," + img_b64
+    labels_all = np.full(len(df_work), -1, dtype=int)
+    train_idx = np.where(mask_train)[0]
+    labels_all[train_idx] = labels_train
     
-    df_result = df.copy()
-    df_result['Cluster'] = labels
+    centroids = modelo.cluster_centroids_
+    incomplete_idx = np.where(~mask_train)[0]
+    for idx in incomplete_idx:
+        row = X_encoded[idx]
+        dists = np.sum(row != centroids, axis=1)
+        labels_all[idx] = int(np.argmin(dists))
     
-    preview = df_result.head(50).to_dict(orient="records")
+    base_series = df_work[base_col]
+    known_base_mask = base_series.notna()
+    cluster_to_base = {}
+    base_to_cluster = {}
+    for cluster_id in range(best_k):
+        cluster_rows = (labels_all == cluster_id) & known_base_mask.to_numpy()
+        valores = base_series[cluster_rows]
+        if valores.empty:
+            continue
+        modo = valores.mode().iloc[0]
+        cluster_to_base[cluster_id] = modo
+        if modo not in base_to_cluster:
+            base_to_cluster[modo] = cluster_id
+    
+    for idx in range(len(df_work)):
+        if known_base_mask.iloc[idx]:
+            val = base_series.iloc[idx]
+            mapped = base_to_cluster.get(val)
+            if mapped is not None:
+                labels_all[idx] = mapped
+        else:
+            val = cluster_to_base.get(labels_all[idx])
+            if val is not None:
+                df_work.at[idx, base_col] = val
+    
+    df_result = df_work.copy()
+    for col_idx, col in enumerate(feat_cols):
+        col_series = df_work[col]
+        modas = {}
+        for cluster_id in range(best_k):
+            valores = col_series[labels_all == cluster_id].dropna()
+            if valores.empty:
+                continue
+            modas[cluster_id] = valores.mode().iloc[0]
+        for row_idx, cluster_id in enumerate(labels_all):
+            if cat_missing_mask[row_idx, col_idx] and cluster_id in modas:
+                df_result.at[row_idx, col] = modas[cluster_id]
+    
+    df_result[base_col] = df_work[base_col]
+    df_result["Cluster"] = labels_all
+    df_preview = df_result.head(50).copy()
+    df_preview = df_preview.replace({np.nan: "?"})
+    preview = df_preview.to_dict(orient="records")
     
     return jsonify({
         "message": f"K-Modas completado (K={best_k})",
         "best_k": best_k,
         "kmodes_costs": costs,
         "preview": preview,
-        "tree_image_datauri": cluster_plot_uri,
+        "tree_image_datauri": None,
         "predictions": []
     })
-
 
 def ejecutar_normalizacion(df, form_data):
     """Normalización de datos numéricos"""
@@ -417,8 +499,7 @@ def ejecutar_normalizacion(df, form_data):
         "predictions": [],
         "tree_image_datauri": None
     })
-
-
+    
 def ejecutar_discretizacion(df, form_data):
     """Discretización usando ChiMerge"""
     class_column = form_data.get('columna_clase', df.columns[-1])
@@ -457,46 +538,6 @@ def ejecutar_discretizacion(df, form_data):
         "message": "Discretización ChiMerge completada",
         "columna_clase": class_column,
         "max_intervals": max_intervals,
-        "preview": preview,
-        "predictions": [],
-        "tree_image_datauri": None
-    })
-
-
-def ejecutar_relleno_valores(df, form_data):
-    """Relleno de valores faltantes usando diferentes estrategias"""
-    estrategia = form_data.get('estrategia', 'media')
-    
-    df_filled = df.copy()
-    
-    for col in df_filled.columns:
-        if df_filled[col].dtype == object:
-            # Columnas categóricas: usar moda
-            if df_filled[col].isna().any():
-                moda = df_filled[col].mode()
-                if not moda.empty:
-                    df_filled[col] = df_filled[col].fillna(moda[0])
-                else:
-                    df_filled[col] = df_filled[col].fillna('DESCONOCIDO')
-        else:
-            # Columnas numéricas
-            if df_filled[col].isna().any():
-                if estrategia == 'media':
-                    df_filled[col] = df_filled[col].fillna(df_filled[col].mean())
-                elif estrategia == 'mediana':
-                    df_filled[col] = df_filled[col].fillna(df_filled[col].median())
-                elif estrategia == 'moda':
-                    moda = df_filled[col].mode()
-                    if not moda.empty:
-                        df_filled[col] = df_filled[col].fillna(moda[0])
-                else:
-                    df_filled[col] = df_filled[col].fillna(0)
-    
-    preview = df_filled.head(50).to_dict(orient="records")
-    
-    return jsonify({
-        "message": f"Relleno de valores completado (estrategia: {estrategia})",
-        "estrategia": estrategia,
         "preview": preview,
         "predictions": [],
         "tree_image_datauri": None
