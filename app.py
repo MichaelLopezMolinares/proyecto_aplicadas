@@ -470,38 +470,50 @@ def ejecutar_kmodos(df):
     })
 
 def ejecutar_normalizacion(df, form_data):
-    """Normalización de datos numéricos"""
+    # limpiar marcadores y preparar columnas numericas
+    df = df.replace("?", np.nan)
+
     metodo = form_data.get('metodo_norm', 'min-max')
-    
-    # Seleccionar columnas numéricas
-    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-    
+
+    # detectar columnas numericas intentando coaccionar a numero
+    numeric_cols = []
+    for col in df.columns:
+        col_numeric = pd.to_numeric(df[col], errors="coerce")
+        if col_numeric.notna().any():
+            df[col] = col_numeric
+            numeric_cols.append(col)
+
     if not numeric_cols:
-        return jsonify({"error": "No hay columnas numéricas para normalizar"}), 400
-    
-    # Convertir a lista de listas
+        return jsonify({"error": "No hay columnas numericas para normalizar"}), 400
+
+    # imputar faltantes con la mediana para evitar NaN en el resultado
+    for col in numeric_cols:
+        median_val = df[col].median()
+        df[col] = df[col].fillna(median_val)
+
+    # convertir a lista de listas y aplicar normalizacion
     tabla = df[numeric_cols].values.tolist()
     columnas_indices = list(range(len(numeric_cols)))
-    
-    # Aplicar normalización
     tabla_normalizada = normalizar_tabla(tabla, columnas_indices, metodo)
-    
-    # Crear DataFrame normalizado
-    df_norm = df.copy()
+
+    # crear DataFrame solo con columnas normalizadas
+    df_norm = pd.DataFrame()
     for i, col in enumerate(numeric_cols):
         df_norm[col] = [fila[i] for fila in tabla_normalizada]
-    
-    preview = df_norm.head(50).to_dict(orient="records")
-    
+
+    df_preview = df_norm.head(50).copy()
+    df_preview = df_preview.replace({np.nan: "?"})
+    preview = df_preview.to_dict(orient="records")
+
     return jsonify({
-        "message": f"Normalización {metodo} completada",
+        "message": f"Normalizacion {metodo} completada",
         "metodo": metodo,
         "columnas_normalizadas": numeric_cols,
         "preview": preview,
         "predictions": [],
         "tree_image_datauri": None
     })
-    
+
 def ejecutar_discretizacion(df, form_data):
     """Discretización usando ChiMerge"""
     class_column = form_data.get('columna_clase', df.columns[-1])
